@@ -664,14 +664,17 @@ public class TinyRemapper {
 			}
 
 			@Override
-			public void acceptMethodVar(Member method, int lvIndex, int startOpIdx, int asmIndex, String dstName) {
+			public void acceptMethodVar(Member method, int lvIndex, String dstName) {
 				if (method == null) throw new NullPointerException("null src method");
 				if (method.owner == null) throw new NullPointerException("null src method owner");
 				if (method.name == null) throw new NullPointerException("null src method name");
 				if (method.desc == null) throw new NullPointerException("null src method desc");
-				if (dstName == null) throw new NullPointerException("null dst name");
+				if (dstName == null) {
+					System.err.println("null dst name: " + method.owner + " " + method.name + " " + method.desc + " " + lvIndex);
+					return;
+				}
 
-				// TODO Auto-generated method stub
+				methodLocalMap.put(method.owner+"/"+MemberInstance.getMethodId(method.name, method.desc)+lvIndex, dstName);
 			}
 
 			@Override
@@ -1364,6 +1367,7 @@ public class TinyRemapper {
 	final Map<String, String> classMap = new HashMap<>();
 	final Map<String, String> methodMap = new HashMap<>();
 	final Map<String, String> methodArgMap = new HashMap<>();
+	final Map<String, String> methodLocalMap = new HashMap<>();
 	final Map<String, String> fieldMap = new HashMap<>();
 	final Map<MemberInstance, Set<String>> conflicts = new ConcurrentHashMap<>();
 	final Set<ClassInstance> classesToMakePublic = Collections.newSetFromMap(new ConcurrentHashMap<>());

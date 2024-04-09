@@ -6,10 +6,10 @@ plugins {
 	id 'com.github.johnrengelman.shadow' version '6.1.0'
 }
 
-sourceCompatibility = JavaVersion.VERSION_1_8
-targetCompatibility = JavaVersion.VERSION_1_8
+sourceCompatibility = JavaVersion.VERSION_17
+targetCompatibility = JavaVersion.VERSION_17
 
-version = '0.8.11'
+version = '0.8.15'
 
 def ENV = System.getenv()
 version = version + (ENV.GITHUB_ACTIONS ? "" : "+local")
@@ -38,7 +38,7 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.encoding = "UTF-8"
 
 	if (JavaVersion.current().isJava9Compatible()) {
-		it.options.release = 8
+		it.options.release = 17
 	}
 }
 

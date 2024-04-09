@@ -36,7 +36,7 @@ public abstract class TrRemapper extends Remapper {
 	 */
 	public abstract String mapMethodArg(String methodOwner, String methodName, String methodDesc, int lvIndex, String name);
 
-	public abstract String mapMethodVar(String methodOwner, String methodName, String methodDesc, int lvIndex, int startOpIdx, int asmIndex, String name);
+	public abstract String mapMethodVar(String methodOwner, String methodName, String methodDesc, int lvIndex, String name);
 
 	/**
 	 * @deprecated Please use {@link TrRemapper#mapAnnotationAttributeName(String, String, String)}

@@ -18,12 +18,7 @@
 
 package net.fabricmc.tinyremapper;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -41,11 +36,7 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.FieldRemapper;
 import org.objectweb.asm.commons.MethodRemapper;
 import org.objectweb.asm.commons.RecordComponentRemapper;
-import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.LabelNode;
-import org.objectweb.asm.tree.LocalVariableNode;
-import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.ParameterNode;
+import org.objectweb.asm.tree.*;
 
 import net.fabricmc.tinyremapper.api.TrMember;
 
@@ -180,6 +171,8 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 
 	private static class AsmMethodRemapper extends MethodRemapper {
 		private final TinyRemapper tr;
+		// Used for generating LVT
+		private String lastDescriptor;
 		AsmMethodRemapper(MethodVisitor methodVisitor,
 				AsmRemapper remapper,
 				String owner,
@@ -199,6 +192,7 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			this.invalidLvNamePattern = invalidLvNamePattern;
 			this.inferNameFromSameLvIndex = inferNameFromSameLvIndex;
 			this.tr = remapper.tr;
+			int currentIndex = 1;
 		}
 
 		@Override
@@ -238,6 +232,7 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkDesc(this.owner, descriptor, "multianewarray instruction", (AsmRemapper) remapper);
 			}
+			lastDescriptor = descriptor;
 
 			super.visitMultiANewArrayInsn(descriptor, numDimensions);
 		}
@@ -247,6 +242,7 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkMember(this.owner, owner, name, descriptor, TrMember.MemberType.FIELD, "field instruction", (AsmRemapper) remapper);
 			}
+			lastDescriptor = descriptor;
 
 			super.visitFieldInsn(opcode, owner, name, descriptor);
 		}
@@ -256,6 +252,7 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkMember(this.owner, owner, name, descriptor, TrMember.MemberType.METHOD, "method instruction", (AsmRemapper) remapper);
 			}
+			lastDescriptor = descriptor;
 
 			super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
 		}
@@ -274,10 +271,60 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 				bootstrapMethodArguments[i] = remapper.mapValue(bootstrapMethodArguments[i]);
 			}
 
+			lastDescriptor = descriptor;
+
 			// bypass remapper
 			mv.visitInvokeDynamicInsn(name,
 					remapper.mapMethodDesc(descriptor), (Handle) remapper.mapValue(bootstrapMethodHandle),
 					bootstrapMethodArguments);
+		}
+
+		private Label lastLable;
+
+		@Override
+		public void visitLabel(Label label) {
+			this.lastLable = label;
+			super.visitLabel(label);
+		}
+
+		@Override
+		public void visitLocalVariable(String name, String descriptor, String signature, Label start, Label end, int index) {
+			name = ((AsmRemapper) remapper).mapMethodVar(owner, methodNode.name, methodNode.desc, index, name);
+			lastDescriptor = descriptor;
+			super.visitLocalVariable(name, descriptor, signature, start, end, index);
+		}
+
+		private final Map<Integer, Local> localMap = new HashMap<>();
+
+		@Override
+		public void visitVarInsn(int opcode, int varIndex) {
+			if (!localMap.containsKey(varIndex)) {
+				String descriptor = switch (opcode) {
+					case Opcodes.ISTORE -> "I";
+					case Opcodes.FSTORE -> "F";
+					case Opcodes.DSTORE -> "D";
+					case Opcodes.LSTORE -> "J";
+					case Opcodes.ASTORE -> lastDescriptor;
+					default -> null;
+				};
+				if (descriptor != null) {
+					localMap.put(varIndex, new Local(this.lastLable, descriptor, varIndex));
+				}
+			}
+			super.visitVarInsn(opcode, varIndex);
+		}
+
+
+		private static class Local {
+			private Label label;
+			private String descriptor;
+			private int index;
+
+			public Local(Label label, String descriptor, int index) {
+				this.label = label;
+				this.descriptor = descriptor;
+				this.index = index;
+			}
 		}
 
 		private static Handle getLambdaImplementedMethod(String name, String desc, Handle bsm, Set<String> knownIndyBsm, Object... bsmArgs) {
@@ -334,6 +381,14 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			}
 
 			// grab arg names from lvs, fix "this", remap vars
+			if (!this.localMap.isEmpty()) {
+				if (methodNode.localVariables == null) {
+					methodNode.localVariables = new ArrayList<>();
+				}
+				this.localMap.values().forEach(local -> {
+					methodNode.localVariables.add(new LocalVariableNode("local" + local.index, local.descriptor, null, new LabelNode(local.label), new LabelNode(this.lastLable), local.index));
+				});
+			}
 			if (methodNode.localVariables != null) {
 				for (int i = 0; i < methodNode.localVariables.size(); i++) {
 					LocalVariableNode lv = methodNode.localVariables.get(i);
@@ -352,14 +407,7 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 						// remap+fix later
 					} else { // var
 						if (!skipLocalMapping) {
-							int startOpIdx = 0;
-							AbstractInsnNode start = lv.start;
-
-							while ((start = start.getPrevious()) != null) {
-								if (start.getOpcode() >= 0) startOpIdx++;
-							}
-
-							lv.name = ((AsmRemapper) remapper).mapMethodVar(owner, methodNode.name, methodNode.desc, lv.index, startOpIdx, i, lv.name);
+							lv.name = ((AsmRemapper) remapper).mapMethodVar(owner, methodNode.name, methodNode.desc, lv.index, lv.name);
 
 							if (renameInvalidLocals && isValidLvName(lv.name)) { // block valid name from generation
 								nameCounts.putIfAbsent(lv.name, 1);

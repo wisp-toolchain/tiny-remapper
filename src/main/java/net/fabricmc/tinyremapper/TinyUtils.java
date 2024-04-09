@@ -67,16 +67,14 @@ public final class TinyUtils {
 	}
 
 	private static final class MethodVarMapping {
-		MethodVarMapping(Member method, int lvIndex, int startOpIdx, int asmIndex, String newName) {
+		MethodVarMapping(Member method, int lvIndex, String newName) {
 			this.method = method;
 			this.lvIndex = lvIndex;
-			this.startOpIdx = startOpIdx;
-			this.asmIndex = asmIndex;
 			this.newName = newName;
 		}
 
 		public Member method;
-		public int lvIndex, startOpIdx, asmIndex;
+		public int lvIndex;
 		public String newName;
 	}
 
@@ -155,8 +153,8 @@ public final class TinyUtils {
 			}
 
 			@Override
-			public void acceptMethodVar(Member method, int lvIndex, int startOpIdx, int asmIndex, String dstName) {
-				methodVarMappings.add(new MethodVarMapping(method, lvIndex, startOpIdx, asmIndex, dstName));
+			public void acceptMethodVar(Member method, int lvIndex, String dstName) {
+				methodVarMappings.add(new MethodVarMapping(method, lvIndex, dstName));
 				members.add(method);
 			}
 
@@ -185,7 +183,7 @@ public final class TinyUtils {
 		}
 
 		for (MethodVarMapping m : methodVarMappings) {
-			out.acceptMethodVar(m.method, m.lvIndex, m.startOpIdx, m.asmIndex, m.newName);
+			out.acceptMethodVar(m.method, m.lvIndex, m.newName);
 		}
 
 		for (MemberMapping m : fieldMappings) {
@@ -361,13 +359,13 @@ public final class TinyUtils {
 					String mappedName = unescapeOpt(parts[2 + nsB], escapedNames);
 					if (!mappedName.isEmpty()) out.acceptMethodArg(member, varLvIndex, mappedName);
 				} else if (inMethod && section.equals("v")) { // method variable: v <lv-index> <lv-start-offset> <optional-lvt-index> <names>...
-					if (parts.length != namespaces.size() + 4) throw new IOException("invalid method variable decl in line "+lineNumber);
+					if (parts.length != namespaces.size() + 2) throw new IOException("invalid method variable decl in line "+lineNumber);
 
 					varLvIndex = Integer.parseInt(parts[1]);
-					varStartOpIdx = Integer.parseInt(parts[2]);
-					varLvtIndex = Integer.parseInt(parts[3]);
-					String mappedName = unescapeOpt(parts[4 + nsB], escapedNames);
-					if (!mappedName.isEmpty()) out.acceptMethodVar(member, varLvIndex, varStartOpIdx, varLvtIndex, mappedName);
+					String mappedName = unescapeOpt(parts[2 + nsB], escapedNames);
+					/*if (!mappedName.isEmpty()) */out.acceptMethodVar(member, varLvIndex, mappedName);
+				} else {
+					System.out.println(section);
 				}
 			}
 		}

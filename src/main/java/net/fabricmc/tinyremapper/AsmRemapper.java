@@ -134,8 +134,19 @@ class AsmRemapper extends TrRemapper {
 		return originatingNewName != null ? originatingNewName : name;
 	}
 
-	public String mapMethodVar(String methodOwner, String methodName, String methodDesc, int lvIndex, int startOpIdx, int asmIndex, String name) {
-		return name; // TODO: implement
+	public String mapMethodVar(String methodOwner, String methodName, String methodDesc, int lvIndex, String name) {
+		String newName = tr.methodLocalMap.get(methodOwner+"/"+MemberInstance.getMethodId(methodName, methodDesc)+lvIndex);
+		if (newName != null) return newName;
+
+		ClassInstance cls = getClass(methodOwner);
+		if (cls == null) return name;
+
+		MemberInstance originatingMethod = cls.resolve(TrMember.MemberType.METHOD, MemberInstance.getMethodId(methodName, methodDesc));
+		if (originatingMethod == null) return name;
+
+		String originatingNewName = tr.methodLocalMap.get(originatingMethod.newNameOriginatingCls+"/"+MemberInstance.getMethodId(originatingMethod.name, originatingMethod.desc)+lvIndex);
+
+		return originatingNewName != null ? originatingNewName : name;
 	}
 
 	@Override
