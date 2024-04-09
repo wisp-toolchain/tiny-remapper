@@ -112,7 +112,7 @@ public final class ClassInstance implements TrClass {
 
 				if (missingTags == 0) return;
 
-				newTags = Arrays.copyOf(tags, oldTags.length + missingTags);
+				newTags = Arrays.copyOf(oldTags, oldTags.length + missingTags);
 
 				for (InputTag newTag : tags) {
 					boolean found = false;
@@ -129,6 +129,8 @@ public final class ClassInstance implements TrClass {
 						missingTags--;
 					}
 				}
+
+				assert missingTags == 0;
 			}
 		} while (!inputTagsUpdater.compareAndSet(this, oldTags, newTags));
 	}
@@ -870,6 +872,11 @@ public final class ClassInstance implements TrClass {
 		if (data == null) throw new IllegalStateException("data unavailable");
 
 		new ClassReader(data).accept(cv, readerFlags);
+	}
+
+	@Override
+	public boolean isInput() {
+		return isInput;
 	}
 
 	@Override
