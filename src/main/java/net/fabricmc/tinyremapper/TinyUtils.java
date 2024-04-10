@@ -140,7 +140,7 @@ public final class TinyUtils {
 		public boolean visitMethodVar(String srcClsName, String srcMethodName, String srcMethodDesc, int lvtRowIndex, int lvIndex, int startOpIdx,
 				int endOpIds, String srcVarName, String[] dstClsNames, String[] dstMethodNames, String[] dstMethodDescs, String[] dstVarNames) throws IOException {
 			String dstName = dstVarNames[0];
-			if (!firstNullOrEqual(dstName, srcVarName)) next.acceptMethodVar(new Member(srcClsName, srcMethodName, srcMethodDesc), lvIndex, startOpIdx, -1, dstName);
+			if (!firstNullOrEqual(dstName, srcVarName)) next.acceptMethodVar(new Member(srcClsName, srcMethodName, srcMethodDesc), lvIndex, dstName);
 			return false;
 		}
 

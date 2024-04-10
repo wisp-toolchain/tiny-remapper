@@ -173,6 +173,7 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 		private final TinyRemapper tr;
 		// Used for generating LVT
 		private String lastDescriptor;
+		private String lastType;
 		AsmMethodRemapper(MethodVisitor methodVisitor,
 				AsmRemapper remapper,
 				String owner,
@@ -205,6 +206,11 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkClass(this.owner, type, "try-catch", (AsmRemapper) remapper);
 			}
+			if (type != null)
+				lastType = Type.getObjectType(remapper.mapType(type)).getDescriptor();
+			else
+				lastType = null;
+			skipLocal = false;
 
 			super.visitTryCatchBlock(start, end, handler, type);
 		}
@@ -214,6 +220,8 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkClass(this.owner, type, "type instruction", (AsmRemapper) remapper);
 			}
+			lastType = Type.getObjectType(remapper.mapType(type)).getDescriptor();
+			skipLocal = false;
 
 			super.visitTypeInsn(opcode, type);
 		}
@@ -223,6 +231,11 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkValue(this.owner, value, "ldc instruction", (AsmRemapper) remapper);
 			}
+			if (value != null)
+				lastType = AsmAnnotationRemapper.getDescriptor(value);
+			else
+				lastType = null;
+			skipLocal = false;
 
 			super.visitLdcInsn(value);
 		}
@@ -233,6 +246,8 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 				PackageAccessChecker.checkDesc(this.owner, descriptor, "multianewarray instruction", (AsmRemapper) remapper);
 			}
 			lastDescriptor = descriptor;
+			lastType = null;
+			skipLocal = false;
 
 			super.visitMultiANewArrayInsn(descriptor, numDimensions);
 		}
@@ -242,7 +257,9 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkMember(this.owner, owner, name, descriptor, TrMember.MemberType.FIELD, "field instruction", (AsmRemapper) remapper);
 			}
-			lastDescriptor = descriptor;
+			lastDescriptor = remapper.mapDesc(descriptor);
+			lastType = Type.getType(remapper.mapDesc(descriptor)).getDescriptor();
+			skipLocal = false;
 
 			super.visitFieldInsn(opcode, owner, name, descriptor);
 		}
@@ -252,7 +269,15 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			if (checkPackageAccess) {
 				PackageAccessChecker.checkMember(this.owner, owner, name, descriptor, TrMember.MemberType.METHOD, "method instruction", (AsmRemapper) remapper);
 			}
-			lastDescriptor = descriptor;
+
+			if (name.equals("<init>")) {
+				lastDescriptor = remapper.mapMethodDesc(descriptor);
+				lastType = Type.getObjectType(remapper.map(owner)).getDescriptor();
+			} else {
+				lastDescriptor = remapper.mapMethodDesc(descriptor);
+				lastType = Type.getReturnType(remapper.mapMethodDesc(descriptor)).getDescriptor();
+			}
+			skipLocal = false;
 
 			super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
 		}
@@ -271,7 +296,9 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 				bootstrapMethodArguments[i] = remapper.mapValue(bootstrapMethodArguments[i]);
 			}
 
-			lastDescriptor = descriptor;
+			lastDescriptor = remapper.mapMethodDesc(descriptor);
+			lastType = Type.getType(remapper.mapMethodDesc(descriptor)).getDescriptor();
+			skipLocal = false;
 
 			// bypass remapper
 			mv.visitInvokeDynamicInsn(name,
@@ -284,17 +311,38 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 		@Override
 		public void visitLabel(Label label) {
 			this.lastLable = label;
+			skipLocal = false;
 			super.visitLabel(label);
+		}
+
+		@Override
+		public void visitFrame(int type, int numLocal, Object[] local, int numStack, Object[] stack) {
+			super.visitFrame(type, numLocal, local, numStack, stack);
+		}
+
+		@Override
+		public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
+			super.visitLookupSwitchInsn(dflt, keys, labels);
 		}
 
 		@Override
 		public void visitLocalVariable(String name, String descriptor, String signature, Label start, Label end, int index) {
 			name = ((AsmRemapper) remapper).mapMethodVar(owner, methodNode.name, methodNode.desc, index, name);
 			lastDescriptor = descriptor;
+			lastType = null;
+			skipLocal = false;
 			super.visitLocalVariable(name, descriptor, signature, start, end, index);
 		}
 
 		private final Map<Integer, Local> localMap = new HashMap<>();
+
+		boolean skipLocal = false;
+
+		@Override
+		public void visitInsn(int opcode) {
+			skipLocal = opcode == Opcodes.ACONST_NULL;
+			super.visitInsn(opcode);
+		}
 
 		@Override
 		public void visitVarInsn(int opcode, int varIndex) {
@@ -307,10 +355,26 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 					case Opcodes.ASTORE -> lastDescriptor;
 					default -> null;
 				};
-				if (descriptor != null) {
-					localMap.put(varIndex, new Local(this.lastLable, descriptor, varIndex));
+
+				if (opcode != Opcodes.ASTORE || !skipLocal) {
+					if (descriptor != null || lastType != null) {
+						if (lastType != null) {
+							descriptor = lastType;
+							lastType = null;
+						}
+						if (descriptor.equals("V")) {
+							System.out.println(remapper.map(this.owner) + " " + remapper.mapMethodName(this.owner, this.methodNode.name, this.methodNode.desc) + " " + opcode + " " + descriptor);
+							descriptor = Type.getType(Object.class).getDescriptor();
+						}
+						final boolean isStatic = (methodNode.access & Opcodes.ACC_STATIC) != 0;
+						if (!isStatic && varIndex == 0)
+							descriptor = Type.getObjectType(remapper.map(this.owner)).getDescriptor();
+						localMap.put(varIndex, new Local(this.lastLable, descriptor, varIndex));
+						lastDescriptor = null;
+					}
 				}
 			}
+			skipLocal = false;
 			super.visitVarInsn(opcode, varIndex);
 		}
 

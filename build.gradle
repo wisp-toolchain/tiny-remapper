@@ -11,7 +11,7 @@ version = '0.10.1'
 def ENV = System.getenv()
 version = version + (ENV.GITHUB_ACTIONS ? "" : "+local")
 
-group = 'net.fabricmc'
+group 'me.alphamode.wisp'
 
 base {
 	archivesName = 'tiny-remapper'
@@ -19,6 +19,7 @@ base {
 
 repositories {
 	mavenCentral()
+	mavenLocal()
 }
 
 dependencies {
@@ -26,7 +27,7 @@ dependencies {
 	api 'org.ow2.asm:asm-commons:9.6'
 	implementation 'org.ow2.asm:asm-tree:9.6'
 	implementation 'org.ow2.asm:asm-util:9.6'
-	implementation "net.fabricmc:mapping-io:0.5.0"
+	implementation "me.alphamode.wisp:mapping-io:0.5.1"
 
 	testImplementation 'org.junit.jupiter:junit-jupiter:5.6.2'
 }
