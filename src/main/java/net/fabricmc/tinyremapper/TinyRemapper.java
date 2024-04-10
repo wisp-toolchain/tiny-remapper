@@ -82,6 +82,14 @@ public class TinyRemapper {
 			return this;
 		}
 
+		/**
+		 * Allows running tiny remapped on a single thread; mostly for debugging.
+		 */
+		public Builder multithreading(boolean enableMultithreading) {
+			this.multithreading = enableMultithreading;
+			return this;
+		}
+
 		public Builder threads(int threadCount) {
 			this.threadCount = threadCount;
 			return this;
@@ -216,7 +224,7 @@ public class TinyRemapper {
 		}
 
 		public TinyRemapper build() {
-			TinyRemapper remapper = new TinyRemapper(mappingProviders, ignoreFieldDesc, threadCount,
+			TinyRemapper remapper = new TinyRemapper(mappingProviders, ignoreFieldDesc, multithreading, threadCount,
 					keepInputData,
 					forcePropagation, knownIndyBsm, propagatePrivate,
 					propagateBridges, propagateRecordComponents,
@@ -230,6 +238,7 @@ public class TinyRemapper {
 
 		private final Set<IMappingProvider> mappingProviders = new HashSet<>();
 		private boolean ignoreFieldDesc;
+		private boolean multithreading = true;
 		private int threadCount;
 		private final Set<String> forcePropagation = new HashSet<>();
 		private final Set<String> knownIndyBsm = new HashSet<>();
@@ -291,7 +300,7 @@ public class TinyRemapper {
 	}
 
 	private TinyRemapper(Collection<IMappingProvider> mappingProviders, boolean ignoreFieldDesc,
-			int threadCount,
+			boolean multithreading, int threadCount,
 			boolean keepInputData,
 			Set<String> forcePropagation, Set<String> knownIndyBsm, boolean propagatePrivate,
 			LinkedMethodPropagation propagateBridges, LinkedMethodPropagation propagateRecordComponents,
@@ -308,9 +317,10 @@ public class TinyRemapper {
 			Remapper extraRemapper) {
 		this.mappingProviders = mappingProviders;
 		this.ignoreFieldDesc = ignoreFieldDesc;
+		this.multithreading = multithreading;
 		this.threadCount = threadCount > 0 ? threadCount : Math.max(Runtime.getRuntime().availableProcessors(), 2);
 		this.keepInputData = keepInputData;
-		this.threadPool = Executors.newFixedThreadPool(this.threadCount);
+		this.threadPool = multithreading ? Executors.newFixedThreadPool(this.threadCount) : Executors.newSingleThreadExecutor(r -> Thread.currentThread());
 		this.forcePropagation = forcePropagation;
 		this.knownIndyBsm = knownIndyBsm;
 		this.propagatePrivate = propagatePrivate;
@@ -775,24 +785,28 @@ public class TinyRemapper {
 			tasks.add(entry);
 
 			if (tasks.size() >= maxTasks) {
-				futures.add(threadPool.submit(new Propagation(state, TrMember.MemberType.METHOD, tasks)));
+				var methodTask = new Propagation(state, TrMember.MemberType.METHOD, tasks);
+				if (multithreading) futures.add(threadPool.submit(methodTask)); else methodTask.run();
 				tasks.clear();
 			}
 		}
 
-		futures.add(threadPool.submit(new Propagation(state, TrMember.MemberType.METHOD, tasks)));
+		var methodTask = new Propagation(state, TrMember.MemberType.METHOD, tasks);
+		if (multithreading) futures.add(threadPool.submit(methodTask)); else methodTask.run();
 		tasks.clear();
 
 		for (Map.Entry<String, String> entry : fieldMap.entrySet()) {
 			tasks.add(entry);
 
 			if (tasks.size() >= maxTasks) {
-				futures.add(threadPool.submit(new Propagation(state, TrMember.MemberType.FIELD, tasks)));
+				var fieldTask = new Propagation(state, TrMember.MemberType.FIELD, tasks);
+				if (multithreading) futures.add(threadPool.submit(fieldTask)); else fieldTask.run();
 				tasks.clear();
 			}
 		}
 
-		futures.add(threadPool.submit(new Propagation(state, TrMember.MemberType.FIELD, tasks)));
+		var fieldTask = new Propagation(state, TrMember.MemberType.FIELD, tasks);
+		if (multithreading) futures.add(threadPool.submit(fieldTask)); else fieldTask.run();
 		tasks.clear();
 
 		waitForAll(futures);
@@ -938,7 +952,10 @@ public class TinyRemapper {
 							throw new IllegalStateException("data for input class " + cls + " is missing?!");
 						}
 
-						futures.add(threadPool.submit(() -> immediateOutputConsumer.accept(cls, apply(cls))));
+						if (multithreading)
+							futures.add(threadPool.submit(() -> immediateOutputConsumer.accept(cls, apply(cls))));
+						else
+							immediateOutputConsumer.accept(cls, apply(cls));
 					}
 				}
 
@@ -1386,6 +1403,7 @@ public class TinyRemapper {
 	final Set<MemberInstance> membersToMakePublic = Collections.newSetFromMap(new ConcurrentHashMap<>());
 	private final Collection<IMappingProvider> mappingProviders;
 	final boolean ignoreFieldDesc;
+	private final boolean multithreading;
 	private final int threadCount;
 	private final ExecutorService threadPool;
 
