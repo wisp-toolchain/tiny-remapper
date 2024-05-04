@@ -363,7 +363,6 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 							lastType = null;
 						}
 						if (descriptor.equals("V")) {
-							System.out.println(remapper.map(this.owner) + " " + remapper.mapMethodName(this.owner, this.methodNode.name, this.methodNode.desc) + " " + opcode + " " + descriptor);
 							descriptor = Type.getType(Object.class).getDescriptor();
 						}
 						final boolean isStatic = (methodNode.access & Opcodes.ACC_STATIC) != 0;
@@ -445,14 +444,14 @@ final class AsmClassRemapper extends VisitTrackingClassRemapper {
 			}
 
 			// grab arg names from lvs, fix "this", remap vars
-			if (!this.localMap.isEmpty()) {
-				if (methodNode.localVariables == null) {
-					methodNode.localVariables = new ArrayList<>();
-				}
-				this.localMap.values().forEach(local -> {
-					methodNode.localVariables.add(new LocalVariableNode("local" + local.index, local.descriptor, null, new LabelNode(local.label), new LabelNode(this.lastLable), local.index));
-				});
-			}
+//			if (!this.localMap.isEmpty()) {
+//				if (methodNode.localVariables == null) {
+//					methodNode.localVariables = new ArrayList<>();
+//				}
+//				this.localMap.values().forEach(local -> {
+//					methodNode.localVariables.add(new LocalVariableNode("local" + local.index, local.descriptor, null, new LabelNode(local.label), new LabelNode(this.lastLable), local.index));
+//				});
+//			}
 			if (methodNode.localVariables != null) {
 				for (int i = 0; i < methodNode.localVariables.size(); i++) {
 					LocalVariableNode lv = methodNode.localVariables.get(i);
